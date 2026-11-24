@@ -1,4 +1,4 @@
-<<<<<<< HEAD
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -64,70 +64,3 @@ services:
 volumes:
   postgres_data:
   attachment_data:
-=======
-services:
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_DB: dawit_lottery
-      POSTGRES_USER: lottery
-      POSTGRES_PASSWORD: lottery
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U lottery -d dawit_lottery"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-
-  backend:
-    build: ./backend
-    env_file: .env
-    environment:
-      DATABASE_URL: postgresql+psycopg://lottery:lottery@postgres:5432/dawit_lottery
-    volumes:
-      - attachment_data:/data/attachments
-    depends_on:
-      postgres:
-        condition: service_healthy
-    ports:
-      - "8000:8000"
-    healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-
-  bot:
-    build: ./backend
-    env_file: .env
-    environment:
-      DATABASE_URL: postgresql+psycopg://lottery:lottery@postgres:5432/dawit_lottery
-    command: ["python", "-m", "app.bot.bot"]
-    depends_on:
-      postgres:
-        condition: service_healthy
-
-  frontend:
-    build: ./frontend
-    environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8000
-    depends_on:
-      - backend
-    ports:
-      - "3000:3000"
-
-  expiration-worker:
-    build: ./backend
-    env_file: .env
-    environment:
-      DATABASE_URL: postgresql+psycopg://lottery:lottery@postgres:5432/dawit_lottery
-    command: ["python", "-m", "app.tasks.reservation_expiration"]
-    depends_on:
-      postgres:
-        condition: service_healthy
-
-volumes:
-  postgres_data:
-  attachment_data:
->>>>>>> 31a053912f988a62a4a70ad13ef361012292985e

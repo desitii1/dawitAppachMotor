@@ -1,5 +1,6 @@
 <<<<<<< HEAD
 .env
+
 __pycache__/
 .pytest_cache/
 *.py[cod]
@@ -9,5 +10,4 @@ backups/
 __pycache__/
 .pytest_cache/
 *.py[cod]
-backups/
->>>>>>> 31a053912f988a62a4a70ad13ef361012292985e
+backups
