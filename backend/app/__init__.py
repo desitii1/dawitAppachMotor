@@ -1,0 +1,2 @@
+"""DawitAppachMotor modular monolith."""
+

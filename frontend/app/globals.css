@@ -1,0 +1,208 @@
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  min-height: 100%;
+  font-family: Inter, Arial, sans-serif;
+  background: #f4f7fb;
+  color: #172033;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button, input {
+  font: inherit;
+}
+
+.loginPage {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, #eff6ff, #f8fafc);
+}
+
+.loginCard {
+  width: 360px;
+  max-width: calc(100% - 32px);
+  background: white;
+  padding: 32px;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(23,32,51,.10);
+}
+
+.loginCard label,
+.lotteryForm label {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0;
+  color: #344054;
+}
+
+.loginCard input,
+.lotteryForm input,
+.filters input,
+.filters select,
+.lotteryForm select,
+textarea,
+.row select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #d0d5dd;
+  border-radius: 6px;
+  background: white;
+}
+
+.primary,
+.approve,
+.reject,
+.logout {
+  border: 0;
+  border-radius: 6px;
+  color: white;
+  cursor: pointer;
+  padding: 10px 16px;
+}
+
+.primary { background: #14532d; }
+.approve { background: #079455; }
+.reject { background: #d92d20; }
+.logout { background: #475467; width: 100%; margin-top: 24px; }
+.error { color: #b42318; }
+
+.layout {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+}
+
+.sidebar {
+  background: #172033;
+  color: white;
+  padding: 24px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+
+.sidebar nav {
+  display: grid;
+  gap: 6px;
+  margin-top: 24px;
+}
+
+.sidebar nav button {
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #d0d5dd;
+  padding: 10px 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sidebar nav button:hover,
+.sidebar nav button.navActive {
+  background: #344054;
+  color: white;
+}
+
+.content {
+  min-width: 0;
+  padding: 32px;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.statCard {
+  background: white;
+  border: 1px solid #eaecf0;
+  border-radius: 10px;
+  padding: 20px;
+  display: grid;
+  gap: 8px;
+}
+
+.statCard span { color: #667085; }
+.statCard strong { font-size: 28px; }
+
+.lotteryForm {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  gap: 8px 16px;
+}
+
+.lotteryForm h2,
+.lotteryForm button {
+  grid-column: 1 / -1;
+}
+
+.row,
+.ticketRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  border-top: 1px solid #eaecf0;
+  padding: 12px 0;
+}
+
+.row:first-of-type,
+.ticketRow:first-of-type {
+  border-top: 0;
+}
+
+.filters {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) 160px 220px;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.table {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 24px;
+}
+
+.badge {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.badge.available { background: #dcfae6; color: #067647; }
+.badge.reserved,
+.badge.payment_submitted { background: #fffaeb; color: #b54708; }
+.badge.sold,
+.badge.approved { background: #d1e9ff; color: #175cd3; }
+.badge.rejected,
+.badge.expired { background: #fee4e2; color: #b42318; }
+
+.actions { display: flex; gap: 8px; }
+.broadcast { min-height: 120px; resize: vertical; margin-bottom: 12px; }
+
+@media (max-width: 800px) {
+  .layout { grid-template-columns: 1fr; }
+  .sidebar {
+    position: static;
+    height: auto;
+  }
+  .sidebar nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .lotteryForm,
+  .filters,
+  .table { grid-template-columns: 1fr; }
+  .content { padding: 20px 16px; }
+}
