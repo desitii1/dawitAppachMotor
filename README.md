@@ -68,6 +68,7 @@ The Telegram customer bot interface is implemented:
 - Reservation and purchased-number views
 - Public masking of sold-number phone numbers
 - Reservation unavailable and allocation-limit messages
+- Persistent direct customer-to-support messaging
 
 Start the bot in Docker by setting `TELEGRAM_BOT_TOKEN` in `.env`, then run:
 
@@ -165,6 +166,7 @@ Customer management, Unicode search, sales reports, and automated expiration are
 - Search by Amharic or English name, phone, or Telegram username
 - Name and recent activity sorting
 - Purchased, reservation, payment, and activity history per customer
+- Customer profile conversations with bidirectional Telegram messages and an action timeline
 - Confirmed revenue reporting from approved payments only
 - Lottery-level sold, reserved, and available totals
 - Persistent 5-minute reservation expiration worker
@@ -174,6 +176,8 @@ Customer management, Unicode search, sales reports, and automated expiration are
 
 - `GET /admin/customers`
 - `GET /admin/customers/{customer_id}`
+- `GET /admin/customers/{customer_id}/messages`
+- `POST /admin/customers/{customer_id}/messages`
 - `GET /admin/reports`
 
 ## Stage 10 deployment status

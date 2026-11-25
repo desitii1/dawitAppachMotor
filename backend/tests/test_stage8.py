@@ -6,12 +6,19 @@ from app.main import app
 from app.models.activity import ActivityLog
 from app.models.broadcast import Broadcast
 from app.models.customer import Customer
+import app.services.broadcast_service as broadcast_service
 
 
 client = TestClient(app)
 
 
-def test_activity_log_creation_and_listing():
+def test_activity_log_creation_and_listing(monkeypatch):
+    sent_messages = []
+
+    async def fake_send(telegram_id: int, message_text: str):
+        sent_messages.append((telegram_id, message_text))
+
+    monkeypatch.setattr(broadcast_service, "_send_message", fake_send)
     db = SessionLocal()
     try:
         customer = db.scalar(select(Customer).where(Customer.telegram_id == 980001))
@@ -63,7 +70,8 @@ def test_activity_log_creation_and_listing():
 
     processed = session.post(f"/admin/broadcasts/{broadcast_id}/process")
     assert processed.status_code == 200
-    assert processed.json()["status"] in {"COMPLETED", "FAILED"}
+    assert processed.json()["status"] == "COMPLETED"
+    assert sent_messages == [(980001, "Stage 8 broadcast test")]
 
     history = session.get("/admin/broadcasts")
     assert history.status_code == 200

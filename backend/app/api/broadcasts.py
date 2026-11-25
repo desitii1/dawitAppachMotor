@@ -12,6 +12,7 @@ from app.services.broadcast_service import (
     BroadcastError,
     create_broadcast,
     process_broadcast,
+    retry_failed_deliveries,
 )
 
 
@@ -88,6 +89,22 @@ def process(
     }
 
 
+@router.post("/{broadcast_id}/retry")
+def retry(
+    broadcast_id: int,
+    db: Session = Depends(get_db),
+    admin: AdminUser = Depends(get_current_admin),
+):
+    try:
+        broadcast = retry_failed_deliveries(db, broadcast_id)
+    except BroadcastError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+    return {
+        "id": broadcast.id,
+        "status": broadcast.status,
+    }
+
+
 @router.get("")
 def history(
     db: Session = Depends(get_db),
@@ -98,8 +115,17 @@ def history(
     ).all()
     result = []
     for broadcast in broadcasts:
-        deliveries = db.scalars(
-            select(BroadcastDelivery).where(BroadcastDelivery.broadcast_id == broadcast.id)
+        deliveries = db.execute(
+            select(BroadcastDelivery.delivery_status, BroadcastDelivery.error_message)
+            .where(BroadcastDelivery.broadcast_id == broadcast.id)
+        ).all()
+        failed_customers = db.execute(
+            select(Customer.full_name, Customer.telegram_username, BroadcastDelivery.error_message)
+            .join(Customer, Customer.id == BroadcastDelivery.customer_id)
+            .where(
+                BroadcastDelivery.broadcast_id == broadcast.id,
+                BroadcastDelivery.delivery_status == "FAILED",
+            )
         ).all()
         result.append({
             "id": broadcast.id,
@@ -110,5 +136,12 @@ def history(
             "sent": sum(item.delivery_status == "SENT" for item in deliveries),
             "failed": sum(item.delivery_status == "FAILED" for item in deliveries),
             "pending": sum(item.delivery_status == "PENDING" for item in deliveries),
+            "failures": [
+                {
+                    "customer": name or username or "Customer",
+                    "error": error,
+                }
+                for name, username, error in failed_customers
+            ],
         })
     return result

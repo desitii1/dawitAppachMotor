@@ -159,6 +159,11 @@ def test_payment_attachment_is_served_inline_to_authenticated_admin(tmp_path, mo
             )
         )
         db.commit()
+        attachment = db.scalar(
+            select(PaymentAttachment).where(PaymentAttachment.payment_id == payment_id)
+        )
+        attachment_id = attachment.id
+        customer_id = db.get(Payment, payment_id).customer_id
         admin = db.get(AdminUser, admin_id)
         username = admin.username
     finally:
@@ -179,3 +184,25 @@ def test_payment_attachment_is_served_inline_to_authenticated_admin(tmp_path, mo
     assert response.headers["content-type"] == "image/png"
     assert response.headers["content-disposition"].startswith("inline;")
     assert response.content == image
+
+    profile = session.get(f"/admin/customers/{customer_id}")
+    assert profile.status_code == 200
+    payment_record = profile.json()["payments"][0]
+    assert payment_record["status"] == "PAYMENT_SUBMITTED"
+    assert payment_record["numbers"] == ["070"]
+    assert payment_record["attachments"][0]["id"] == attachment_id
+
+    messages = session.get(f"/admin/customers/{customer_id}/messages")
+    assert messages.status_code == 200
+    payment_message = next(
+        message for message in messages.json()
+        if message["attachment_id"] == attachment_id
+    )
+    assert payment_message["direction"] == "INBOUND"
+    assert payment_message["message_text"] == "Payment image sent for numbers: 070"
+
+    conversation_image = session.get(
+        f"/admin/payments/attachments/{attachment_id}"
+    )
+    assert conversation_image.status_code == 200
+    assert conversation_image.content == image

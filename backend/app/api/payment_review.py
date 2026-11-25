@@ -138,3 +138,22 @@ def get_attachment(
         filename=attachment.original_filename,
         content_disposition_type="inline",
     )
+
+
+@router.get("/attachments/{attachment_id}")
+def get_attachment_by_id(
+    attachment_id: int,
+    db: Session = Depends(get_db),
+    admin: AdminUser = Depends(get_current_admin),
+):
+    attachment = db.get(PaymentAttachment, attachment_id)
+    if attachment is None:
+        raise HTTPException(status_code=404, detail="Payment attachment not found")
+    path = (Path(settings.attachment_root).resolve() / attachment.storage_key).resolve()
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Payment attachment file not found")
+    return FileResponse(
+        path,
+        filename=attachment.original_filename,
+        content_disposition_type="inline",
+    )

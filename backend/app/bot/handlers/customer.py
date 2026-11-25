@@ -2,13 +2,16 @@ from aiogram import F, Router
 from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from datetime import datetime, timezone
 from sqlalchemy import select
 from io import BytesIO
 
 from app.bot.keyboards import lottery_menu, main_menu, ticket_page
 from app.bot.states import CustomerFlow
 from app.database import SessionLocal
+from app.models.activity import ActivityLog
 from app.models.customer import Customer
+from app.models.conversation_message import ConversationMessage
 from app.models.lottery import Lottery
 from app.models.reservation import Reservation
 from app.models.reservation import ReservationItem
@@ -16,7 +19,6 @@ from app.models.ticket import Ticket
 from app.models.payment import Payment
 from app.services.payment_service import PaymentSubmissionError, submit_payment_screenshot
 from app.config import settings
-from app.services.activity_service import record_activity
 from app.services.lottery_service import list_lotteries, list_tickets
 from app.services.reservation_service import ReservationError, create_reservation
 
@@ -53,20 +55,62 @@ def mask_phone(phone: str | None) -> str:
     return digits[:-2] + "xx"
 
 
+def record_bot_activity(telegram_id: int, activity_type: str, description: str) -> None:
+    db = SessionLocal()
+    try:
+        customer = db.scalar(select(Customer).where(Customer.telegram_id == telegram_id))
+        if customer is None:
+            return
+        customer.last_activity_at = datetime.now(timezone.utc)
+        db.add(
+            ActivityLog(
+                customer_id=customer.id,
+                activity_type=activity_type,
+                description=description,
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+
+
+def store_inbound_message(telegram_id: int, message_id: int, message_text: str) -> bool:
+    db = SessionLocal()
+    try:
+        customer = db.scalar(select(Customer).where(Customer.telegram_id == telegram_id))
+        if customer is None:
+            return False
+        customer.last_activity_at = datetime.now(timezone.utc)
+        db.add(
+            ConversationMessage(
+                customer_id=customer.id,
+                direction="INBOUND",
+                message_text=message_text,
+                telegram_message_id=message_id,
+            )
+        )
+        db.add(
+            ActivityLog(
+                customer_id=customer.id,
+                activity_type="CUSTOMER_SUPPORT_MESSAGE",
+                description="Customer sent a message to support",
+            )
+        )
+        db.commit()
+        return True
+    finally:
+        db.close()
+
+
 @router.message(CommandStart())
 async def start(message: Message, state: FSMContext):
     await state.clear()
-    customer_id = get_or_create_customer(message.from_user.id, message.from_user.username)
-    db = SessionLocal()
-    try:
-        record_activity(
-            db,
-            customer_id=customer_id,
-            activity_type="BOT_STARTED",
-            description="Customer started the Telegram bot",
-        )
-    finally:
-        db.close()
+    get_or_create_customer(message.from_user.id, message.from_user.username)
+    record_bot_activity(
+        message.from_user.id,
+        "BOT_STARTED",
+        "Customer started the Telegram bot",
+    )
     await message.answer(
         "Welcome to DawitAppachMotor. Choose a lottery or use the menu:",
         reply_markup=main_menu(),
@@ -97,6 +141,11 @@ async def open_lottery(callback: CallbackQuery, state: FSMContext):
     lottery_id = int(callback.data.split(":", 1)[1])
     await state.clear()
     await state.update_data(lottery_id=lottery_id, selected=[])
+    record_bot_activity(
+        callback.from_user.id,
+        "LOTTERY_OPENED",
+        f"Customer opened lottery {lottery_id}",
+    )
     await show_page(callback, state, lottery_id, 1)
     await callback.answer()
 
@@ -168,6 +217,11 @@ async def search_number(message: Message, state: FSMContext):
         items, total, pages = list_tickets(db, lottery_id, 1, 20, None, message.text.strip())
     finally:
         db.close()
+    record_bot_activity(
+        message.from_user.id,
+        "NUMBER_SEARCHED",
+        f"Customer searched lottery {lottery_id} for {message.text.strip()}",
+    )
     if not items:
         await message.answer("No matching numbers found.")
         return
@@ -199,6 +253,7 @@ async def toggle_ticket(callback: CallbackQuery, state: FSMContext):
     selected = list(data.get("selected", []))
     if number in selected:
         selected.remove(number)
+        action = "deselected"
     else:
         if len(selected) >= lottery.max_numbers_per_customer:
             await callback.answer(
@@ -207,7 +262,13 @@ async def toggle_ticket(callback: CallbackQuery, state: FSMContext):
             )
             return
         selected.append(number)
+        action = "selected"
     await state.update_data(selected=selected)
+    record_bot_activity(
+        callback.from_user.id,
+        "NUMBER_SELECTION_CHANGED",
+        f"Customer {action} number {number} in lottery {lottery_id}",
+    )
     await show_page(callback, state, lottery_id, 1)
     await callback.answer("Selection updated.")
 
@@ -309,6 +370,11 @@ async def send_reservation(callback: CallbackQuery, state: FSMContext):
 
 @router.message(F.text == "My Reservations")
 async def my_reservations(message: Message):
+    record_bot_activity(
+        message.from_user.id,
+        "RESERVATIONS_VIEWED",
+        "Customer viewed active reservations",
+    )
     db = SessionLocal()
     try:
         customer = db.scalar(select(Customer).where(Customer.telegram_id == message.from_user.id))
@@ -346,6 +412,11 @@ async def my_reservations(message: Message):
 
 @router.message(F.text == "My Purchased Numbers")
 async def my_purchased_numbers(message: Message):
+    record_bot_activity(
+        message.from_user.id,
+        "PURCHASED_NUMBERS_VIEWED",
+        "Customer viewed purchased numbers",
+    )
     db = SessionLocal()
     try:
         customer = db.scalar(select(Customer).where(Customer.telegram_id == message.from_user.id))
@@ -438,9 +509,53 @@ async def submit_document(message: Message):
 
 @router.message(F.text == "Payment Instructions")
 async def payment_instructions(message: Message):
+    record_bot_activity(
+        message.from_user.id,
+        "PAYMENT_INSTRUCTIONS_VIEWED",
+        "Customer viewed payment instructions",
+    )
     await message.answer("Payment instructions are currently being configured by the lottery administrator.")
 
 
 @router.message(F.text == "Contact Support")
-async def contact_support(message: Message):
-    await message.answer("Please contact the lottery administrator through the support channel published by the operator.")
+async def contact_support(message: Message, state: FSMContext):
+    record_bot_activity(
+        message.from_user.id,
+        "SUPPORT_OPENED",
+        "Customer opened the support conversation",
+    )
+    await state.set_state(CustomerFlow.supporting)
+    await message.answer("Write your message to the lottery administrator.")
+
+
+@router.message(CustomerFlow.supporting, F.text)
+async def save_support_message(message: Message, state: FSMContext):
+    message_text = message.text.strip()
+    if not message_text:
+        await message.answer("Please type a message for the administrator.")
+        return
+
+    if not store_inbound_message(
+        message.from_user.id,
+        message.message_id,
+        message_text,
+    ):
+        await state.clear()
+        await message.answer("Please send /start before contacting support.")
+        return
+
+    await state.clear()
+    await message.answer("Your message was sent to support. The administrator will reply here.")
+
+
+@router.message(F.text & ~F.text.startswith("/"))
+async def receive_customer_message(message: Message):
+    message_text = message.text.strip()
+    if not message_text:
+        return
+    if store_inbound_message(
+        message.from_user.id,
+        message.message_id,
+        message_text,
+    ):
+        await message.answer("Your message was sent to support. The administrator will reply here.")

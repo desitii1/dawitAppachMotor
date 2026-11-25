@@ -4,7 +4,7 @@ import time
 from datetime import datetime, timezone
 
 from aiogram import Bot
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -33,6 +33,8 @@ def create_broadcast(
         customers = db.scalars(
             select(Customer).where(Customer.id.in_(customer_ids))
         ).all()
+        if len(customers) != len(set(customer_ids)):
+            raise BroadcastError("One or more selected customers no longer exist", 404)
     else:
         customers = db.scalars(select(Customer)).all()
     if not customers:
@@ -116,6 +118,37 @@ def process_broadcast(db: Session, broadcast_id: int) -> Broadcast:
     )
     broadcast.status = "COMPLETED" if sent is not None else "FAILED"
     broadcast.completed_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(broadcast)
+    return broadcast
+
+
+def retry_failed_deliveries(db: Session, broadcast_id: int) -> Broadcast:
+    broadcast = db.scalar(
+        select(Broadcast).where(Broadcast.id == broadcast_id).with_for_update()
+    )
+    if broadcast is None:
+        raise BroadcastError("Broadcast not found", 404)
+    if broadcast.status == "PROCESSING":
+        raise BroadcastError("This broadcast is already being processed", 409)
+
+    result = db.execute(
+        update(BroadcastDelivery)
+        .where(
+            BroadcastDelivery.broadcast_id == broadcast_id,
+            BroadcastDelivery.delivery_status == "FAILED",
+        )
+        .values(
+            delivery_status="PENDING",
+            error_message=None,
+            sent_at=None,
+        )
+    )
+    if result.rowcount == 0:
+        raise BroadcastError("This broadcast has no failed deliveries to retry")
+
+    broadcast.status = "QUEUED"
+    broadcast.completed_at = None
     db.commit()
     db.refresh(broadcast)
     return broadcast

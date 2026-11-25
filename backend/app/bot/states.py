@@ -7,3 +7,4 @@ class CustomerFlow(StatesGroup):
     collecting_name = State()
     collecting_phone = State()
     confirming = State()
+    supporting = State()

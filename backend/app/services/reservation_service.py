@@ -4,6 +4,7 @@ import secrets
 from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
+from app.models.activity import ActivityLog
 from app.models.customer import Customer
 from app.models.lottery import Lottery
 from app.models.payment import Payment
@@ -179,6 +180,17 @@ def create_reservation(
             status="AWAITING_PAYMENT",
         )
     )
+    db.add(
+        ActivityLog(
+            customer_id=customer.id,
+            activity_type="RESERVATION_CREATED",
+            description=(
+                f"Reserved numbers {', '.join(ticket.number for ticket in tickets)} "
+                f"for lottery {lottery.name}"
+            ),
+        )
+    )
+    customer.last_activity_at = now
     db.commit()
     db.refresh(reservation)
     return reservation

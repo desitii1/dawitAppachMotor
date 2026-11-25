@@ -90,6 +90,20 @@ def submit_payment_screenshot(
     payment.status = "PAYMENT_SUBMITTED"
     payment.submitted_at = datetime.now(timezone.utc)
     reservation.status = "PAYMENT_SUBMITTED"
+    numbers = db.scalars(
+        select(Ticket.number)
+        .join(ReservationItem, ReservationItem.ticket_id == Ticket.id)
+        .where(ReservationItem.reservation_id == reservation.id)
+        .order_by(Ticket.number)
+    ).all()
+    customer.last_activity_at = payment.submitted_at
+    db.add(
+        ActivityLog(
+            customer_id=customer.id,
+            activity_type="PAYMENT_SCREENSHOT_SUBMITTED",
+            description=f"Payment screenshot submitted for numbers {', '.join(numbers)}",
+        )
+    )
     db.add(attachment)
     db.commit()
     db.refresh(attachment)

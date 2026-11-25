@@ -185,7 +185,8 @@ textarea,
 
 .badge.available { background: #dcfae6; color: #067647; }
 .badge.reserved,
-.badge.payment_submitted { background: #fffaeb; color: #b54708; }
+.badge.payment_submitted,
+.badge.awaiting_payment { background: #fffaeb; color: #b54708; }
 .badge.sold,
 .badge.approved { background: #d1e9ff; color: #175cd3; }
 .badge.rejected,
@@ -229,7 +230,7 @@ textarea,
 .previewBackdrop {
   position: fixed;
   inset: 0;
-  z-index: 10;
+  z-index: 30;
   display: grid;
   place-items: center;
   padding: 24px;
@@ -254,6 +255,120 @@ textarea,
   top: 10px;
   right: 12px;
 }
+.broadcastHistoryItem {
+  border-top: 1px solid #eaecf0;
+  padding: 14px 0;
+}
+.broadcastHeading,
+.profileHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.broadcastHistoryItem > p { white-space: pre-wrap; }
+.profileBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(16, 24, 40, .72);
+}
+.profileDialog {
+  position: relative;
+  width: min(1200px, 100%);
+  max-height: 92vh;
+  overflow: auto;
+  padding: 24px;
+  border-radius: 12px;
+  background: white;
+}
+.profileHeader { margin-bottom: 12px; }
+.profileHeader h2,
+.profileHeader p { margin: 0 0 8px; }
+.profileHeader .previewClose { position: static; }
+.customerHistory { margin-top: 20px; }
+.customerActivityTime {
+  display: block;
+  margin-top: 5px;
+  color: #667085;
+  font-size: 12px;
+}
+.paymentHistoryItem {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  padding: 14px 0;
+  border-top: 1px solid #eaecf0;
+}
+.paymentHistoryDetails {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.paymentHistoryDetails > span {
+  display: grid;
+  gap: 6px;
+}
+.paymentHistoryAttachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.conversationPanel {
+  margin-top: 18px;
+  border-top: 1px solid #eaecf0;
+}
+.conversationPanel summary {
+  padding: 14px 0;
+  color: #175cd3;
+  font-weight: 600;
+  cursor: pointer;
+}
+.conversationHelp { color: #475467; font-size: 14px; }
+.conversationMessage time { color: #667085; font-size: 12px; }
+.conversationMessages {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 180px;
+  max-height: 48vh;
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid #eaecf0;
+  border-radius: 8px;
+  background: #f9fafb;
+}
+.conversationMessage {
+  max-width: 88%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: white;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, .08);
+}
+.conversationMessage p {
+  margin: 0 0 6px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.conversationMessage.outbound {
+  align-self: flex-end;
+  color: #064e3b;
+  background: #d1fae5;
+}
+.conversationForm {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+.conversationForm textarea {
+  min-height: 90px;
+  resize: vertical;
+}
 
 @media (max-width: 800px) {
   .layout { grid-template-columns: 1fr; }
@@ -266,4 +381,8 @@ textarea,
   .filters,
   .table { grid-template-columns: 1fr; }
   .content { padding: 20px 16px; }
+  .paymentHistoryItem,
+  .paymentHistoryDetails { grid-template-columns: 1fr; }
+  .profileBackdrop { padding: 8px; }
+  .profileDialog { max-height: 96vh; padding: 16px; }
 }
