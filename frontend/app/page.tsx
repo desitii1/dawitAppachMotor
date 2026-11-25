@@ -19,6 +19,13 @@ const navigation = [
 
 type Section = (typeof navigation)[number];
 
+const reportPeriods = [
+  { value: "weekly", label: "Weekly (last 7 days)" },
+  { value: "monthly", label: "Monthly (last 30 days)" },
+  { value: "two_months", label: "2 months (last 60 days)" },
+  { value: "yearly", label: "Yearly (last 365 days)" },
+] as const;
+
 export default function AdminPage() {
   const [authenticated, setAuthenticated] = useState(false);
   const [activeSection, setActiveSection] = useState<Section>("Dashboard");
@@ -39,6 +46,9 @@ export default function AdminPage() {
   const [showCustomerConversation, setShowCustomerConversation] = useState(false);
   const [activities, setActivities] = useState<any[]>([]);
   const [reports, setReports] = useState<any>({});
+  const [reportPeriod, setReportPeriod] =
+    useState<(typeof reportPeriods)[number]["value"]>("weekly");
+  const [reportError, setReportError] = useState("");
   const [broadcastHistory, setBroadcastHistory] = useState<any[]>([]);
   const [broadcastMessage, setBroadcastMessage] = useState("");
   const [broadcastCustomerIds, setBroadcastCustomerIds] = useState<number[]>([]);
@@ -120,7 +130,6 @@ export default function AdminPage() {
         ));
       }),
       api("/admin/activities?page_size=100").then(async (r) => r.ok && setActivities(await r.json())),
-      api("/admin/reports").then(async (r) => r.ok && setReports(await r.json())),
       api("/reservations/admin/list").then(async (r) => r.ok && setReservations(await r.json())),
     ]);
     await loadLotteries();
@@ -152,6 +161,28 @@ export default function AdminPage() {
     }, 5000);
     return () => window.clearInterval(timer);
   }, [authenticated]);
+
+  useEffect(() => {
+    if (!authenticated) return;
+    let active = true;
+    api(`/admin/reports?period=${reportPeriod}`)
+      .then(async (response) => {
+        if (!active) return;
+        if (response.ok) {
+          setReports(await response.json());
+          setReportError("");
+        } else {
+          setReportError("Could not load performance for this period.");
+        }
+      })
+      .catch((cause) => {
+        console.error("Could not load performance report", cause);
+        if (active) setReportError("Could not reach the server to load this report.");
+      });
+    return () => {
+      active = false;
+    };
+  }, [authenticated, reportPeriod]);
 
   useEffect(() => {
     if (!authenticated || !selectedCustomer) return;
@@ -433,17 +464,53 @@ export default function AdminPage() {
         {notice && <p role="status" className="notice">{notice}</p>}
 
         {activeSection === "Dashboard" && (
-          <section className="cards">
-            {[
-              ["Lotteries", overview.total_lotteries],
-              ["Available", overview.available_numbers],
-              ["Reserved", overview.reserved_numbers],
-              ["Sold", overview.sold_numbers],
-              ["Pending payments", overview.pending_payments],
-              ["Approved revenue", `${overview.approved_revenue ?? 0} ETB`],
-            ].map(([label, value]) => (
-              <article key={String(label)} className="statCard"><span>{label}</span><strong>{value ?? 0}</strong></article>
-            ))}
+          <section className="dashboardSections">
+            <section style={cardStyle}>
+              <div className="reportHeader">
+                <div>
+                  <h2>Performance</h2>
+                  <p>
+                    {reports.period_start && reports.period_end
+                      ? `${new Date(reports.period_start).toLocaleDateString()} – ${new Date(reports.period_end).toLocaleDateString()}`
+                      : "Choose a period to view performance."}
+                  </p>
+                </div>
+                <label className="reportPeriod">
+                  Period
+                  <select
+                    value={reportPeriod}
+                    onChange={(event) =>
+                      setReportPeriod(event.target.value as (typeof reportPeriods)[number]["value"])
+                    }
+                  >
+                    {reportPeriods.map((period) => (
+                      <option key={period.value} value={period.value}>{period.label}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              {reportError && <p role="alert" className="error">{reportError}</p>}
+              <div className="cards">
+                <article className="statCard"><span>Confirmed revenue</span><strong>{reports.confirmed_revenue ?? 0} ETB</strong></article>
+                <article className="statCard"><span>Approved payments</span><strong>{reports.approved_payments ?? 0}</strong></article>
+                <article className="statCard"><span>Pending payments</span><strong>{reports.pending_payments ?? 0}</strong></article>
+                <article className="statCard"><span>Numbers sold</span><strong>{reports.numbers_sold ?? 0}</strong></article>
+                <article className="statCard"><span>New customers</span><strong>{reports.new_customers ?? 0}</strong></article>
+              </div>
+            </section>
+            <section style={cardStyle}>
+              <h2>Current inventory</h2>
+              <div className="cards">
+                {[
+                  ["Lotteries", overview.total_lotteries],
+                  ["Available numbers", overview.available_numbers],
+                  ["Reserved numbers", overview.reserved_numbers],
+                  ["Sold numbers", overview.sold_numbers],
+                ].map(([label, value]) => (
+                  <article key={String(label)} className="statCard"><span>{label}</span><strong>{value ?? 0}</strong></article>
+                ))}
+              </div>
+            </section>
           </section>
         )}
 
@@ -615,12 +682,38 @@ export default function AdminPage() {
 
         {activeSection === "Reports" && (
           <section style={cardStyle}>
-            <h2>Sales Reports</h2>
+            <div className="reportHeader">
+              <div>
+                <h2>Performance</h2>
+                <p>
+                  {reports.period_start && reports.period_end
+                    ? `${new Date(reports.period_start).toLocaleDateString()} – ${new Date(reports.period_end).toLocaleDateString()}`
+                    : "Choose a period to view performance."}
+                </p>
+              </div>
+              <label className="reportPeriod">
+                Period
+                <select
+                  value={reportPeriod}
+                  onChange={(event) =>
+                    setReportPeriod(event.target.value as (typeof reportPeriods)[number]["value"])
+                  }
+                >
+                  {reportPeriods.map((period) => (
+                    <option key={period.value} value={period.value}>{period.label}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            {reportError && <p role="alert" className="error">{reportError}</p>}
             <div className="cards">
               <article className="statCard"><span>Confirmed revenue</span><strong>{reports.confirmed_revenue ?? 0} ETB</strong></article>
               <article className="statCard"><span>Approved payments</span><strong>{reports.approved_payments ?? 0}</strong></article>
               <article className="statCard"><span>Pending payments</span><strong>{reports.pending_payments ?? 0}</strong></article>
+              <article className="statCard"><span>Numbers sold</span><strong>{reports.numbers_sold ?? 0}</strong></article>
+              <article className="statCard"><span>New customers</span><strong>{reports.new_customers ?? 0}</strong></article>
             </div>
+            <h3>Current lottery inventory</h3>
             {(reports.lotteries || []).map((lottery: any) => <article key={lottery.lottery_id} className="row"><strong>{lottery.name}</strong><span>Available {lottery.available} · Reserved {lottery.reserved} · Sold {lottery.sold}</span></article>)}
           </section>
         )}

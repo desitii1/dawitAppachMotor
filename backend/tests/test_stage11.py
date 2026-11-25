@@ -93,6 +93,27 @@ def test_customer_profile_and_conversation(monkeypatch):
         assert customer_list.status_code == 200
         assert all("telegram_id" not in item for item in customer_list.json()["items"])
 
+        for period, days in (
+            ("weekly", 7),
+            ("monthly", 30),
+            ("two_months", 60),
+            ("yearly", 365),
+        ):
+            report = session.get("/admin/reports", params={"period": period})
+            assert report.status_code == 200
+            report_body = report.json()
+            assert report_body["period"] == period
+            assert report_body["period_days"] == days
+            assert report_body["period_start"] < report_body["period_end"]
+            assert "numbers_sold" in report_body
+            assert "new_customers" in report_body
+
+        invalid_report = session.get(
+            "/admin/reports",
+            params={"period": "lifetime"},
+        )
+        assert invalid_report.status_code == 422
+
         sent = session.post(
             f"/admin/customers/{customer_id}/messages",
             json={"message_text": "We received your request."},

@@ -1,12 +1,10 @@
-<<<<<<< HEAD
-.env
-
+<<<<<<< 
 __pycache__/
 .pytest_cache/
 *.py[cod]
 backups/
 =======
-.env
+
 __pycache__/
 .pytest_cache/
 *.py[cod]

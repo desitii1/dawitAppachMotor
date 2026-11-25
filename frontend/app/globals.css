@@ -18,6 +18,9 @@ a {
 button, input {
   font: inherit;
 }
+select {
+  font: inherit;
+}
 
 .loginPage {
   min-height: 100vh;
@@ -122,6 +125,34 @@ textarea,
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 16px;
   margin-bottom: 16px;
+}
+.dashboardSections {
+  display: grid;
+  gap: 20px;
+}
+.dashboardSections .cards:last-child { margin-bottom: 0; }
+.reportHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.reportHeader h2,
+.reportHeader p { margin: 0 0 8px; }
+.reportHeader p { color: #667085; }
+.reportPeriod {
+  display: grid;
+  gap: 6px;
+  min-width: 220px;
+  color: #344054;
+}
+.reportPeriod select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #d0d5dd;
+  border-radius: 6px;
+  background: white;
 }
 
 .statCard {
@@ -385,4 +416,6 @@ textarea,
   .paymentHistoryDetails { grid-template-columns: 1fr; }
   .profileBackdrop { padding: 8px; }
   .profileDialog { max-height: 96vh; padding: 16px; }
+  .reportHeader { flex-direction: column; }
+  .reportPeriod { width: 100%; }
 }
