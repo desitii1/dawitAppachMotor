@@ -145,7 +145,7 @@ Customer activity tracking and Telegram broadcasts are implemented:
 - Bot-start and payment audit activity records
 - Broadcast creation for all customers or selected customer IDs
 - Broadcast delivery records
-- Controlled synchronous worker processing
+- Automatic broadcast worker with per-recipient rate limiting and retry of pending deliveries
 - Permanent failure tracking
 - Broadcast history with sent, failed, and pending counts
 
@@ -180,7 +180,7 @@ Customer management, Unicode search, sales reports, and automated expiration are
 
 Production deployment support is included:
 
-- Docker and Docker Compose images for PostgreSQL, backend, bot, frontend, and expiration worker
+- Docker and Docker Compose images for PostgreSQL, backend, bot, frontend, expiration worker, and broadcast worker
 - Environment-based secrets and configuration
 - Alembic migrations before backend startup
 - Persistent PostgreSQL and payment-attachment volumes
@@ -398,7 +398,7 @@ Customer activity tracking and Telegram broadcasts are implemented:
 - Bot-start and payment audit activity records
 - Broadcast creation for all customers or selected customer IDs
 - Broadcast delivery records
-- Controlled synchronous worker processing
+- Automatic broadcast worker with per-recipient rate limiting and retry of pending deliveries
 - Permanent failure tracking
 - Broadcast history with sent, failed, and pending counts
 
@@ -433,7 +433,7 @@ Customer management, Unicode search, sales reports, and automated expiration are
 
 Production deployment support is included:
 
-- Docker and Docker Compose images for PostgreSQL, backend, bot, frontend, and expiration worker
+- Docker and Docker Compose images for PostgreSQL, backend, bot, frontend, expiration worker, and broadcast worker
 - Environment-based secrets and configuration
 - Alembic migrations before backend startup
 - Persistent PostgreSQL and payment-attachment volumes

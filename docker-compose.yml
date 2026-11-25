@@ -37,6 +37,8 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgresql+psycopg://lottery:lottery@postgres:5432/dawit_lottery
+    volumes:
+      - attachment_data:/data/attachments
     command: ["python", "-m", "app.bot.bot"]
     depends_on:
       postgres:
@@ -57,6 +59,16 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://lottery:lottery@postgres:5432/dawit_lottery
     command: ["python", "-m", "app.tasks.reservation_expiration"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  broadcast-worker:
+    build: ./backend
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://lottery:lottery@postgres:5432/dawit_lottery
+    command: ["python", "-m", "app.tasks.broadcast_worker"]
     depends_on:
       postgres:
         condition: service_healthy

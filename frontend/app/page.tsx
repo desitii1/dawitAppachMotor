@@ -38,6 +38,9 @@ export default function AdminPage() {
   const [reports, setReports] = useState<any>({});
   const [broadcastHistory, setBroadcastHistory] = useState<any[]>([]);
   const [broadcastMessage, setBroadcastMessage] = useState("");
+  const [broadcastCustomerIds, setBroadcastCustomerIds] = useState<number[]>([]);
+  const [notice, setNotice] = useState("");
+  const [paymentPreview, setPaymentPreview] = useState<string | null>(null);
   const [lotteryName, setLotteryName] = useState("");
   const [startNumber, setStartNumber] = useState("000");
   const [endNumber, setEndNumber] = useState("999");
@@ -95,6 +98,15 @@ export default function AdminPage() {
   useEffect(() => {
     if (selectedLottery) loadTickets(selectedLottery);
   }, [selectedLottery, ticketStatus, ticketSearch]);
+
+  useEffect(() => {
+    if (!authenticated) return;
+    const timer = window.setInterval(async () => {
+      const response = await api("/admin/broadcasts");
+      if (response.ok) setBroadcastHistory(await response.json());
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [authenticated]);
 
   async function login(event: FormEvent) {
     event.preventDefault();
@@ -177,15 +189,68 @@ export default function AdminPage() {
   }
 
   async function createBroadcast() {
-    if (!broadcastMessage.trim()) return;
+    if (!broadcastMessage.trim()) {
+      setNotice("Enter a message before creating a broadcast.");
+      return;
+    }
+    const audience = broadcastCustomerIds.length
+      ? `${broadcastCustomerIds.length} selected customer(s)`
+      : "all customers";
+    if (!window.confirm(`Send this message to ${audience}?\n\n${broadcastMessage}`)) return;
     const response = await api("/admin/broadcasts", {
       method: "POST",
-      body: JSON.stringify({ message_text: broadcastMessage }),
+      body: JSON.stringify({
+        message_text: broadcastMessage,
+        customer_ids: broadcastCustomerIds.length ? broadcastCustomerIds : undefined,
+      }),
     });
     if (response.ok) {
       setBroadcastMessage("");
+      setBroadcastCustomerIds([]);
+      setNotice("Broadcast queued. Delivery results will update automatically.");
       await loadProtectedData();
+    } else {
+      setNotice((await response.json()).detail || "Could not queue the broadcast.");
     }
+  }
+
+  async function viewPaymentFile(paymentId: number) {
+    setNotice("");
+    try {
+      const response = await api(`/admin/payments/${paymentId}/attachment`);
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        setNotice(body?.detail || `Could not open the payment image (HTTP ${response.status}).`);
+        return;
+      }
+      const blob = await response.blob();
+      if (!blob.type.startsWith("image/")) {
+        setNotice(`The attachment is not an image (${blob.type || "unknown file type"}).`);
+        return;
+      }
+      setPaymentPreview((current) => {
+        if (current) URL.revokeObjectURL(current);
+        return URL.createObjectURL(blob);
+      });
+    } catch (cause) {
+      console.error("Could not load payment image", cause);
+      setNotice("Could not reach the server to open this payment image.");
+    }
+  }
+
+  function closePaymentPreview() {
+    setPaymentPreview((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return null;
+    });
+  }
+
+  function toggleBroadcastCustomer(customerId: number) {
+    setBroadcastCustomerIds((current) =>
+      current.includes(customerId)
+        ? current.filter((id) => id !== customerId)
+        : [...current, customerId],
+    );
   }
 
   if (!authenticated) {
@@ -221,6 +286,7 @@ export default function AdminPage() {
 
       <main className="content">
         <h1>{activeSection}</h1>
+        {notice && <p role="status" className="notice">{notice}</p>}
 
         {activeSection === "Dashboard" && (
           <section className="cards">
@@ -295,7 +361,7 @@ export default function AdminPage() {
           <section style={cardStyle}>
             <h2>Reservations</h2>
             {reservations.map((reservation) => (
-              <article key={reservation.id} className="row"><div><strong>{reservation.reference}</strong><div>{reservation.customer_name} · {reservation.numbers.join(", ")}</div></div><span className={`badge ${reservation.status.toLowerCase()}`}>{reservation.status}</span></article>
+              <article key={reservation.id} className="row"><div><strong>{reservation.customer_name || "Customer"}</strong><div>Numbers: {reservation.numbers.join(", ")}</div></div><span className={`badge ${reservation.status.toLowerCase()}`}>{reservation.status}</span></article>
             ))}
           </section>
         )}
@@ -305,7 +371,12 @@ export default function AdminPage() {
             <h2>Payment Verification</h2>
             {pendingPayments.map((payment) => (
               <article key={payment.payment_id} className="row">
-                <div><strong>{payment.customer_name}</strong><div>{payment.reservation_reference} · {payment.numbers.join(", ")}</div><div>{payment.amount} ETB</div>{payment.has_attachment && <a href={`${API_URL}/admin/payments/${payment.payment_id}/attachment`} target="_blank">View screenshot</a>}</div>
+                <div>
+                  <strong>{payment.customer_name}</strong>
+                  <div>Numbers: {payment.numbers.join(", ")}</div>
+                  <div>{payment.amount} ETB</div>
+                  {payment.has_attachment && <button className="fileButton" onClick={() => viewPaymentFile(payment.payment_id)}>View payment image</button>}
+                </div>
                 <div className="actions"><button className="approve" onClick={() => approvePayment(payment.payment_id)}>Approve</button><button className="reject" onClick={() => rejectPayment(payment.payment_id)}>Reject</button></div>
               </article>
             ))}
@@ -324,6 +395,20 @@ export default function AdminPage() {
           <section style={cardStyle}>
             <h2>Broadcast Messages</h2>
             <textarea value={broadcastMessage} onChange={(e) => setBroadcastMessage(e.target.value)} placeholder="Write a Telegram announcement" className="broadcast" />
+            <h3>Recipients ({broadcastCustomerIds.length || "all"})</h3>
+            <p>Leave everyone unchecked to send to all known customers.</p>
+            <div className="recipientList">
+              {customers.map((customer) => (
+                <label key={customer.id}>
+                  <input
+                    type="checkbox"
+                    checked={broadcastCustomerIds.includes(customer.id)}
+                    onChange={() => toggleBroadcastCustomer(customer.id)}
+                  />
+                  {customer.full_name || customer.telegram_username || customer.telegram_id}
+                </label>
+              ))}
+            </div>
             <button className="primary" onClick={createBroadcast}>Create broadcast</button>
             {broadcastHistory.map((item) => <article key={item.id} className="row"><div><strong>{item.status}</strong><div>{item.message_text}</div></div><span>Sent {item.sent} · Failed {item.failed}</span></article>)}
           </section>
@@ -348,6 +433,20 @@ export default function AdminPage() {
           </section>
         )}
       </main>
+      {paymentPreview && (
+        <div
+          className="previewBackdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Payment image"
+          onClick={closePaymentPreview}
+        >
+          <div className="previewDialog" onClick={(event) => event.stopPropagation()}>
+            <button className="previewClose" onClick={closePaymentPreview}>Close</button>
+            <img src={paymentPreview} alt="Customer payment screenshot" />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

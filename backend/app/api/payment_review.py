@@ -54,7 +54,6 @@ def list_pending(
         )
         result.append({
             "payment_id": payment.id,
-            "reservation_reference": reservation.reference if reservation else None,
             "customer_name": customer.full_name if customer else None,
             "phone_number": customer.phone_number if customer else None,
             "telegram_id": customer.telegram_id if customer else None,
@@ -134,4 +133,8 @@ def get_attachment(
     path = (Path(settings.attachment_root).resolve() / attachment.storage_key).resolve()
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Payment attachment file not found")
-    return FileResponse(path, filename=attachment.original_filename)
+    return FileResponse(
+        path,
+        filename=attachment.original_filename,
+        content_disposition_type="inline",
+    )

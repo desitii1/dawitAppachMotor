@@ -8,7 +8,7 @@ from app.main import app
 from app.models.admin import AdminUser
 from app.models.customer import Customer
 from app.models.lottery import Lottery
-from app.models.payment import Payment
+from app.models.payment import Payment, PaymentAttachment
 from app.models.reservation import Reservation
 from app.models.ticket import Ticket
 from app.security.authentication import hash_password
@@ -139,3 +139,43 @@ def test_rejection_releases_reserved_number():
         assert ticket.customer_id is None
     finally:
         db.close()
+
+
+def test_payment_attachment_is_served_inline_to_authenticated_admin(tmp_path, monkeypatch):
+    admin_id, payment_id = create_admin_and_reservation("971111")
+    image = b"\x89PNG\r\n\x1a\npayment-test"
+    storage_key = "payments/test/payment.png"
+    attachment_path = tmp_path / storage_key
+    attachment_path.parent.mkdir(parents=True)
+    attachment_path.write_bytes(image)
+
+    db = SessionLocal()
+    try:
+        db.add(
+            PaymentAttachment(
+                payment_id=payment_id,
+                storage_key=storage_key,
+                original_filename="payment.png",
+            )
+        )
+        db.commit()
+        admin = db.get(AdminUser, admin_id)
+        username = admin.username
+    finally:
+        db.close()
+
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "attachment_root", str(tmp_path))
+    session = TestClient(app)
+    login = session.post(
+        "/admin/login",
+        json={"username": username, "password": "Stage7-Secure-Password"},
+    )
+    assert login.status_code == 200
+
+    response = session.get(f"/admin/payments/{payment_id}/attachment")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/png"
+    assert response.headers["content-disposition"].startswith("inline;")
+    assert response.content == image

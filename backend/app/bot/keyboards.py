@@ -19,7 +19,7 @@ def lottery_menu(lotteries: list) -> InlineKeyboardMarkup:
     for lottery in lotteries:
         builder.row(
             InlineKeyboardButton(
-                text=f"{lottery.name} ({lottery.status})",
+                text=lottery.name,
                 callback_data=f"lottery:{lottery.id}",
             )
         )
@@ -30,10 +30,10 @@ def ticket_page(items: list, lottery_id: int, page: int, pages: int, selected: s
     builder = InlineKeyboardBuilder()
     selected = selected or set()
     for item in items:
-        indicator = "SOLD" if item.status == "SOLD" else "RES" if item.status == "RESERVED" else "AVAILABLE"
-        check = " [x]" if item.number in selected else ""
+        indicator = "🔴" if item.status == "SOLD" else "🟡" if item.status == "RESERVED" else "🟢"
+        check = " ☑️" if item.number in selected else ""
         builder.button(
-            text=f"{item.number} - {indicator}{check}",
+            text=f"{indicator} {item.number}{check}",
             callback_data=f"ticket:{lottery_id}:{item.number}",
         )
     builder.adjust(2)
@@ -47,6 +47,9 @@ def ticket_page(items: list, lottery_id: int, page: int, pages: int, selected: s
         builder.row(*navigation)
     if selected:
         builder.row(
-            InlineKeyboardButton(text=f"Review {len(selected)} selected", callback_data=f"review:{lottery_id}")
+            InlineKeyboardButton(
+                text=f"🟩  BUY NOW  ·  {len(selected)}",
+                callback_data=f"buy:{lottery_id}",
+            )
         )
     return builder.as_markup()

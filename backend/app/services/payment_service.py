@@ -14,6 +14,7 @@ from app.models.activity import ActivityLog
 from app.models.admin import AdminUser
 from app.models.customer import Customer
 import asyncio
+import logging
 from aiogram import Bot
 from app.config import settings
 
@@ -185,7 +186,7 @@ def approve_payment(
             customer_id=customer.id if customer else None,
             admin_user_id=admin.id,
             activity_type="PAYMENT_APPROVED",
-            description=f"Payment {payment.id} approved for reservation {reservation.reference}",
+            description=f"Payment {payment.id} approved for numbers {', '.join(ticket.number for ticket in tickets)}",
         )
     )
     db.commit()
@@ -195,7 +196,7 @@ def approve_payment(
     if customer:
         _notify_customer(
             customer,
-            f"Payment approved. Your numbers for reservation {reservation.reference} are now confirmed.",
+            f"Payment approved. Your numbers {', '.join(ticket.number for ticket in tickets)} are now confirmed.",
         )
     return payment, reservation
 
@@ -254,7 +255,7 @@ def reject_payment(
             customer_id=customer.id if customer else None,
             admin_user_id=admin.id,
             activity_type="PAYMENT_REJECTED",
-            description=f"Payment {payment.id} rejected for reservation {reservation.reference}: {reason}",
+            description=f"Payment {payment.id} rejected for numbers {', '.join(ticket.number for ticket in tickets)}: {reason}",
         )
     )
     db.commit()
@@ -264,6 +265,6 @@ def reject_payment(
     if customer:
         _notify_customer(
             customer,
-            f"Payment rejected for reservation {reservation.reference}. Reason: {reason}",
+            f"Payment for numbers {', '.join(ticket.number for ticket in tickets)} was rejected. Reason: {reason}",
         )
     return payment, reservation

@@ -1,7 +1,7 @@
 from aiogram import F, Router
 from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy import select
 from io import BytesIO
 
@@ -68,23 +68,28 @@ async def start(message: Message, state: FSMContext):
     finally:
         db.close()
     await message.answer(
-        "Welcome to DawitAppachMotor. Choose an option:",
+        "Welcome to DawitAppachMotor. Choose a lottery or use the menu:",
         reply_markup=main_menu(),
     )
+    await send_lottery_list(message)
 
 
-@router.message(F.text.in_({"View Lottery Numbers", "Select Numbers"}))
-async def choose_lottery(message: Message, state: FSMContext):
-    await state.clear()
+async def send_lottery_list(message: Message):
     db = SessionLocal()
     try:
         lotteries = [item for item in list_lotteries(db) if item.status == "ACTIVE"]
     finally:
         db.close()
-    if not lotteries:
-        await message.answer("No active lottery is available.")
-        return
-    await message.answer("Choose a lottery:", reply_markup=lottery_menu(lotteries))
+    if lotteries:
+        await message.answer("Available lotteries:", reply_markup=lottery_menu(lotteries))
+    else:
+        await message.answer("There are no active lotteries right now.")
+
+
+@router.message(F.text.in_({"View Lottery Numbers", "Select Numbers"}))
+async def choose_lottery(message: Message, state: FSMContext):
+    await state.clear()
+    await send_lottery_list(message)
 
 
 @router.callback_query(F.data.startswith("lottery:"))
@@ -124,12 +129,12 @@ async def show_page(
                     customer = db.get(Customer, item.customer_id)
                 finally:
                     db.close()
-                detail = f"Sold ({mask_phone(customer.phone_number) if customer else 'xxxxxxxxxx'})"
+                detail = f"🔴 {mask_phone(customer.phone_number) if customer else 'xxxxxxxxxx'}"
             elif item.status == "RESERVED":
-                detail = "Temporarily unavailable"
+                detail = "🟡"
             else:
-                detail = "Available"
-            lines.append(f"{item.number}: {detail}")
+                detail = "🟢"
+            lines.append(f"{detail} {item.number}")
         text += "\n" + "\n".join(lines)
     await callback.message.edit_text(
         text,
@@ -168,7 +173,7 @@ async def search_number(message: Message, state: FSMContext):
         return
     selected = set(data.get("selected", []))
     text = "Search results:\n" + "\n".join(
-        f"{item.number}: {'Sold' if item.status == 'SOLD' else 'Temporarily unavailable' if item.status == 'RESERVED' else 'Available'}"
+        f"{'🔴' if item.status == 'SOLD' else '🟡' if item.status == 'RESERVED' else '🟢'} {item.number}"
         for item in items
     )
     await message.answer(text, reply_markup=ticket_page(items, lottery_id, 1, pages, selected))
@@ -207,7 +212,7 @@ async def toggle_ticket(callback: CallbackQuery, state: FSMContext):
     await callback.answer("Selection updated.")
 
 
-@router.callback_query(F.data.startswith("review:"))
+@router.callback_query(F.data.startswith("buy:"))
 async def review_selection(callback: CallbackQuery, state: FSMContext):
     _, lottery_id = callback.data.split(":")
     data = await state.get_data()
@@ -257,46 +262,49 @@ async def collect_phone(message: Message, state: FSMContext):
     selected = data["selected"]
     total = lottery.ticket_price * len(selected)
     await message.answer(
-        f"Confirm reservation\n\n"
+        f"Review your numbers\n\n"
         f"Customer: {data['full_name']}\n"
         f"Phone: {message.text.strip()}\n"
         f"Numbers: {', '.join(selected)}\n"
         f"Ticket count: {len(selected)}\n"
         f"Price: {lottery.ticket_price} {lottery.currency}\n"
         f"Total: {total} {lottery.currency}\n"
-        f"Expires in: {lottery.reservation_duration_hours} hours\n\n"
-        "Reply CONFIRM to reserve these numbers.",
+        f"Expires in: {lottery.reservation_duration_hours} hours",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="📨 Send", callback_data="send_reservation")]
+            ]
+        ),
     )
 
 
-@router.message(CustomerFlow.confirming, F.text.casefold() == "confirm")
-async def confirm_reservation(message: Message, state: FSMContext):
+@router.callback_query(CustomerFlow.confirming, F.data == "send_reservation")
+async def send_reservation(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     db = SessionLocal()
     try:
         reservation = create_reservation(
             db,
-            telegram_id=message.from_user.id,
-            telegram_username=message.from_user.username,
+            telegram_id=callback.from_user.id,
+            telegram_username=callback.from_user.username,
             full_name=data["full_name"],
             phone_number=data["phone_number"],
             lottery_id=data["lottery_id"],
             numbers=data["selected"],
         )
     except ReservationError as exc:
-        await message.answer(exc.message)
+        await callback.answer(exc.message, show_alert=True)
         return
     finally:
         db.close()
 
     await state.clear()
-    await message.answer(
-        f"Reservation: {reservation.reference}\n"
-        f"Numbers: {', '.join(data['selected'])}\n"
-        f"Ticket count: {len(data['selected'])}\n"
+    await callback.message.answer(
+        f"Reservation sent for numbers: {', '.join(data['selected'])}\n"
         f"Total: {reservation.total_amount} ETB\n"
-        f"Expires: {reservation.expires_at.isoformat()}",
+        "Upload your payment image now as a photo or supported image file."
     )
+    await callback.answer()
 
 
 @router.message(F.text == "My Reservations")
@@ -329,8 +337,8 @@ async def my_reservations(message: Message):
         return
     await message.answer(
         "\n\n".join(
-            f"{reservation.reference}: {', '.join(numbers)}\n"
-            f"Status: {reservation.status}\nExpires: {reservation.expires_at.isoformat()}"
+            f"Numbers: {', '.join(numbers)}\n"
+            f"{'🟡' if reservation.status == 'AWAITING_PAYMENT' else '🟠'} · Expires: {reservation.expires_at.isoformat()}"
             for reservation, numbers in result
         )
     )
@@ -389,7 +397,13 @@ async def submit_telegram_screenshot(
             )
         except PaymentSubmissionError as exc:
             return exc.message
-        return f"Payment screenshot submitted for reservation {reservation.reference}. It awaits administrator approval."
+        numbers = db.scalars(
+            select(Ticket.number)
+            .join(ReservationItem, ReservationItem.ticket_id == Ticket.id)
+            .where(ReservationItem.reservation_id == reservation.id)
+            .order_by(Ticket.number)
+        ).all()
+        return f"Payment screenshot received for {', '.join(numbers)}. It is awaiting administrator approval."
     finally:
         db.close()
 

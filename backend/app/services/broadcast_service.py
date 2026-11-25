@@ -1,4 +1,6 @@
 import asyncio
+import logging
+import time
 from datetime import datetime, timezone
 
 from aiogram import Bot
@@ -93,19 +95,17 @@ def process_broadcast(db: Session, broadcast_id: int) -> Broadcast:
             delivery.sent_at = datetime.now(timezone.utc)
             delivery.error_message = None
         except Exception as exc:
+            logging.exception(
+                "Broadcast delivery failed: broadcast_id=%s delivery_id=%s",
+                broadcast_id,
+                delivery.id,
+            )
             delivery.delivery_status = "FAILED"
             delivery.error_message = str(exc)[:2000]
             delivery.sent_at = None
         db.commit()
+        time.sleep(0.05)
 
-    failed = db.scalar(
-        select(BroadcastDelivery.id)
-        .where(
-            BroadcastDelivery.broadcast_id == broadcast_id,
-            BroadcastDelivery.delivery_status == "FAILED",
-        )
-        .limit(1)
-    )
     sent = db.scalar(
         select(BroadcastDelivery.id)
         .where(

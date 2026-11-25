@@ -49,7 +49,6 @@ def admin_list(
         ).all()
         result.append({
             "id": reservation.id,
-            "reference": reservation.reference,
             "status": reservation.status,
             "total_amount": reservation.total_amount,
             "expires_at": reservation.expires_at,
