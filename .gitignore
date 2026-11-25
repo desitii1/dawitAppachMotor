@@ -1,14 +1,26 @@
-<<<<<<< 
+
+# Environment secrets
+.env
+.env.*
+!.env.example
+
+# Python
 __pycache__/
-.pytest_cache/
 *.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Backups
 backups/
-=======
-.env
-__pycache__/
-.pytest_cache/
-*.py[cod]
-backups
-.env
-.env.example
-.gitignore
+
+# Node
+node_modules/
+dist/
+
+# IDE
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
