@@ -1,7 +1,4 @@
 
-# DawitAppachMotor
-
-A modular digital lottery platform for Telegram customers and a private web administration dashboard.
 
 ## Stage 1 status
 

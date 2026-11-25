@@ -4,8 +4,11 @@ __pycache__/
 *.py[cod]
 backups/
 =======
-
+.env
 __pycache__/
 .pytest_cache/
 *.py[cod]
 backups
+.env
+.env.example
+.gitignore
