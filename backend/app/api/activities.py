@@ -21,15 +21,22 @@ def list_activities(
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(get_current_admin),
 ):
-    query = select(ActivityLog)
+    query = select(
+        ActivityLog,
+        Customer.full_name,
+        Customer.phone_number,
+        Customer.telegram_id,
+    ).outerjoin(
+        Customer, Customer.id == ActivityLog.customer_id
+    )
     if activity_type:
         query = query.where(ActivityLog.activity_type == activity_type)
     if search:
-        query = query.join(Customer, Customer.id == ActivityLog.customer_id, isouter=True).where(
+        query = query.where(
             Customer.full_name.ilike(f"%{search}%")
             | Customer.phone_number.contains(search)
         )
-    activities = db.scalars(
+    activities = db.execute(
         query.order_by(ActivityLog.created_at.desc())
         .offset((page - 1) * page_size)
         .limit(page_size)
@@ -38,16 +45,13 @@ def list_activities(
         {
             "id": activity.id,
             "customer_id": activity.customer_id,
-            "customer_name": db.get(Customer, activity.customer_id).full_name
-            if activity.customer_id and db.get(Customer, activity.customer_id)
-            else None,
-            "telegram_id": db.get(Customer, activity.customer_id).telegram_id
-            if activity.customer_id and db.get(Customer, activity.customer_id)
-            else None,
+            "customer_name": customer_name,
+            "phone_number": phone_number,
+            "telegram_id": telegram_id,
             "admin_user_id": activity.admin_user_id,
             "activity_type": activity.activity_type,
             "description": activity.description,
             "created_at": activity.created_at,
         }
-        for activity in activities
+        for activity, customer_name, phone_number, telegram_id in activities
     ]

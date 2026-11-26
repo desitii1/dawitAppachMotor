@@ -7,4 +7,7 @@ class CustomerFlow(StatesGroup):
     collecting_name = State()
     collecting_phone = State()
     confirming = State()
+    editing_profile_name = State()
+    editing_profile_phone = State()
+    replacing_payment_screenshot = State()
     supporting = State()

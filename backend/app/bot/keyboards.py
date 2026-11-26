@@ -7,7 +7,8 @@ def main_menu() -> ReplyKeyboardMarkup:
         keyboard=[
             [KeyboardButton(text="View Lottery Numbers"), KeyboardButton(text="Select Numbers")],
             [KeyboardButton(text="My Reservations"), KeyboardButton(text="My Purchased Numbers")],
-            [KeyboardButton(text="Payment Instructions"), KeyboardButton(text="Contact Support")],
+            [KeyboardButton(text="Edit My Details"), KeyboardButton(text="Payment Instructions")],
+            [KeyboardButton(text="Contact Support")],
         ],
         resize_keyboard=True,
         persistent=True,

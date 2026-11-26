@@ -36,6 +36,10 @@ export default function AdminPage() {
   const [lotteries, setLotteries] = useState<any[]>([]);
   const [selectedLottery, setSelectedLottery] = useState<number | null>(null);
   const [tickets, setTickets] = useState<any[]>([]);
+  const [editingTicketId, setEditingTicketId] = useState<number | null>(null);
+  const [ticketEditName, setTicketEditName] = useState("");
+  const [ticketEditPhone, setTicketEditPhone] = useState("");
+  const [ticketEditStatus, setTicketEditStatus] = useState("SOLD");
   const [pendingPayments, setPendingPayments] = useState<any[]>([]);
   const [reservations, setReservations] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
@@ -77,7 +81,7 @@ export default function AdminPage() {
       const fifthRound = data.find(
         (lottery: any) => lottery.name?.trim().toLowerCase() === "fifth round",
       );
-      setSelectedLottery(fifthRound?.id ?? null);
+      setSelectedLottery(fifthRound?.id ?? data[0]?.id ?? null);
     }
   }
 
@@ -85,10 +89,10 @@ export default function AdminPage() {
     try {
       const pageSize = 200;
       const firstResponse = await api(
-        `/lotteries/${lotteryId}/tickets?page=1&page_size=${pageSize}`,
+        `/lotteries/${lotteryId}/tickets/manage?page=1&page_size=${pageSize}`,
       );
       if (!firstResponse.ok) {
-        setNotice("Could not load Fifth round numbers.");
+        setNotice("Could not load ticket details.");
         return;
       }
       const firstPage = await firstResponse.json();
@@ -97,11 +101,11 @@ export default function AdminPage() {
         : 1;
       const remainingPages = await Promise.all(
         Array.from({ length: pageCount - 1 }, (_, index) =>
-          api(`/lotteries/${lotteryId}/tickets?page=${index + 2}&page_size=${pageSize}`),
+          api(`/lotteries/${lotteryId}/tickets/manage?page=${index + 2}&page_size=${pageSize}`),
         ),
       );
       if (remainingPages.some((response) => !response.ok)) {
-        setNotice("Could not load all Fifth round numbers.");
+        setNotice("Could not load all ticket details.");
         return;
       }
       const otherItems = await Promise.all(
@@ -109,8 +113,8 @@ export default function AdminPage() {
       );
       setTickets([...(firstPage.items || []), ...otherItems.flat()]);
     } catch (cause) {
-      console.error("Could not load Fifth round numbers", cause);
-      setNotice("Could not reach the server to load Fifth round numbers.");
+      console.error("Could not load ticket details", cause);
+      setNotice("Could not reach the server to load ticket details.");
     }
   }
 
@@ -325,6 +329,55 @@ export default function AdminPage() {
       body: JSON.stringify({ status }),
     });
     if (response.ok) await loadProtectedData();
+  }
+
+  function startTicketEdit(ticket: any) {
+    setEditingTicketId(ticket.id);
+    setTicketEditName(ticket.customer_name || "");
+    setTicketEditPhone(ticket.phone_number || "");
+    setTicketEditStatus(ticket.status);
+    setNotice("");
+  }
+
+  async function saveTicketEdit(event: FormEvent, ticket: any) {
+    event.preventDefault();
+    if (!selectedLottery) return;
+    let response: Response;
+    try {
+      response = await api(
+        `/lotteries/${selectedLottery}/tickets/${ticket.id}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            status: ticketEditStatus,
+            full_name: ticketEditStatus === "AVAILABLE" ? null : ticketEditName,
+            phone_number: ticketEditStatus === "AVAILABLE" ? null : ticketEditPhone,
+          }),
+        },
+      );
+    } catch (cause) {
+      console.error("Could not update ticket details", cause);
+      setNotice("Could not reach the server to update this number.");
+      return;
+    }
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      const detail = body?.detail;
+      const message = Array.isArray(detail)
+        ? detail.map((item) => item?.msg).filter(Boolean).join(" ")
+        : detail;
+      setNotice(typeof message === "string" ? message : "Could not update this number.");
+      return;
+    }
+    setEditingTicketId(null);
+    setNotice(`Number ${ticket.number} was updated.`);
+    await loadTickets(selectedLottery);
+    const [activityResponse, overviewResponse] = await Promise.all([
+      api("/admin/activities?page_size=100"),
+      api("/admin/overview"),
+    ]);
+    if (activityResponse.ok) setActivities(await activityResponse.json());
+    if (overviewResponse.ok) setOverview(await overviewResponse.json());
   }
 
   async function approvePayment(paymentId: number) {
@@ -543,20 +596,94 @@ export default function AdminPage() {
 
         {activeSection === "Number Management" && (
           <section style={cardStyle}>
-            <h2>Fifth round numbers</h2>
+            <h2>Number Management</h2>
+            <label>
+              Lottery
+              <select
+                value={selectedLottery ?? ""}
+                onChange={(event) =>
+                  setSelectedLottery(event.target.value ? Number(event.target.value) : null)
+                }
+              >
+                {lotteries.map((lottery) => (
+                  <option key={lottery.id} value={lottery.id}>{lottery.name}</option>
+                ))}
+              </select>
+            </label>
             {!selectedLottery ? (
-              <p>The “Fifth round” lottery was not found.</p>
+              <p>Create or select a lottery to manage its numbers.</p>
             ) : tickets.length ? (
               <div className="table">
                 {tickets.map((ticket) => (
-                  <div className="ticketRow" key={ticket.id}>
-                    <strong>{ticket.number}</strong>
-                    <span className={`badge ${ticket.status.toLowerCase()}`}>{ticket.status}</span>
+                  <div key={ticket.id}>
+                    <div className="ticketRow">
+                      <strong>{ticket.number}</strong>
+                      <span className={`badge ${ticket.status.toLowerCase()}`}>{ticket.status}</span>
+                      {ticket.customer_name || ticket.phone_number ? (
+                        <>
+                          <span>{ticket.customer_name || "Customer name missing"}</span>
+                          <span>{ticket.phone_number || "Phone missing"}</span>
+                        </>
+                      ) : null}
+                      <button className="fileButton" onClick={() => startTicketEdit(ticket)}>
+                        Edit number
+                      </button>
+                    </div>
+                    {editingTicketId === ticket.id && (
+                      <form
+                        onSubmit={(event) => saveTicketEdit(event, ticket)}
+                        style={{ display: "grid", gap: 10, padding: "12px 0 18px" }}
+                      >
+                        <label>
+                          Customer name
+                          <input
+                            value={ticketEditName}
+                            onChange={(event) => setTicketEditName(event.target.value)}
+                            required={ticketEditStatus === "SOLD"}
+                            disabled={ticketEditStatus === "AVAILABLE"}
+                          />
+                        </label>
+                        <label>
+                          Phone number
+                          <input
+                            value={ticketEditPhone}
+                            onChange={(event) => setTicketEditPhone(event.target.value)}
+                            required={ticketEditStatus === "SOLD"}
+                            disabled={ticketEditStatus === "AVAILABLE"}
+                          />
+                        </label>
+                        <label>
+                          Number status
+                          <select
+                            value={ticketEditStatus}
+                            onChange={(event) => setTicketEditStatus(event.target.value)}
+                            disabled={ticket.status === "RESERVED"}
+                          >
+                            {ticket.status === "RESERVED" && (
+                              <option value="RESERVED">Reserved</option>
+                            )}
+                            <option value="AVAILABLE">Available</option>
+                            <option value="SOLD">Sold</option>
+                          </select>
+                        </label>
+                        {ticket.status === "RESERVED" ? (
+                          <p>A reserved number cannot change status until its reservation is resolved.</p>
+                        ) : ticketEditStatus === "SOLD" && ticket.status === "AVAILABLE" ? (
+                          <p>Saving as sold records a manual sale for the customer details above.</p>
+                        ) : null}
+                        <div className="actions">
+                          <button className="primary" type="submit">Save changes</button>
+                          <button type="button" className="fileButton" onClick={() => setEditingTicketId(null)}>
+                            Cancel
+                          </button>
+                        </div>
+                      </form>
+                    )}
                   </div>
                 ))}
               </div>
             ) : (
-              <p>No numbers found for Fifth round.</p>
+              <p>No numbers found for this lottery.</p>
             )}
           </section>
         )}
@@ -615,7 +742,18 @@ export default function AdminPage() {
         {activeSection === "Activities" && (
           <section style={cardStyle}>
             <h2>Customer Activities</h2>
-            {activities.map((activity) => <article key={activity.id} className="row"><div><strong>{activity.activity_type}</strong><div>{activity.description}</div></div><span>{activity.created_at}</span></article>)}
+            {activities.map((activity) => (
+              <article key={activity.id} className="row">
+                <div>
+                  <strong>{activity.customer_name || "System activity"}</strong>
+                  <div>{activity.phone_number || "No phone number on record"}</div>
+                  <div><strong>{activity.activity_type.replaceAll("_", " ")}</strong></div>
+                  <div>{activity.description}</div>
+                </div>
+                <time>{activity.created_at ? new Date(activity.created_at).toLocaleString() : "Date unavailable"}</time>
+              </article>
+            ))}
+            {activities.length === 0 && <p>No customer activities recorded.</p>}
           </section>
         )}
 

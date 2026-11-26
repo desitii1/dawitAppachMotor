@@ -20,7 +20,11 @@ from app.models.payment import Payment
 from app.services.payment_service import PaymentSubmissionError, submit_payment_screenshot
 from app.config import settings
 from app.services.lottery_service import list_lotteries, list_tickets
-from app.services.reservation_service import ReservationError, create_reservation
+from app.services.reservation_service import (
+    ReservationError,
+    create_reservation,
+    normalize_phone_number,
+)
 
 
 router = Router()
@@ -401,13 +405,180 @@ async def my_reservations(message: Message):
     if not reservations:
         await message.answer("You have no active reservations.")
         return
-    await message.answer(
-        "\n\n".join(
+    for reservation, numbers in result:
+        await message.answer(
             f"Numbers: {', '.join(numbers)}\n"
-            f"{'🟡' if reservation.status == 'AWAITING_PAYMENT' else '🟠'} · Expires: {reservation.expires_at.isoformat()}"
-            for reservation, numbers in result
+            f"Status: {reservation.status.replace('_', ' ').title()}\n"
+            f"Expires: {reservation.expires_at.astimezone().strftime('%Y-%m-%d %H:%M')}",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="Replace payment screenshot",
+                            callback_data=f"replace_screenshot:{reservation.id}",
+                        )
+                    ]
+                ]
+            ),
         )
+
+
+@router.message(F.text == "Edit My Details")
+async def start_profile_edit(message: Message, state: FSMContext):
+    await state.clear()
+    db = SessionLocal()
+    try:
+        customer = db.scalar(
+            select(Customer).where(Customer.telegram_id == message.from_user.id)
+        )
+        current_name = customer.full_name if customer else None
+        current_phone = customer.phone_number if customer else None
+    finally:
+        db.close()
+    if customer is None:
+        await message.answer("Please send /start before editing your details.")
+        return
+    await message.answer(
+        f"Current name: {current_name or 'not set'}\n"
+        f"Current phone: {current_phone or 'not set'}\n\n"
+        "Choose what you want to correct:",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="Edit name", callback_data="edit_profile:name"),
+                    InlineKeyboardButton(text="Edit phone", callback_data="edit_profile:phone"),
+                ]
+            ]
+        ),
     )
+
+
+@router.callback_query(F.data.startswith("edit_profile:"))
+async def start_profile_field_edit(callback: CallbackQuery, state: FSMContext):
+    field = callback.data.split(":", 1)[1]
+    if field == "name":
+        await state.set_state(CustomerFlow.editing_profile_name)
+        await callback.message.answer("Send your corrected full name.")
+    elif field == "phone":
+        await state.set_state(CustomerFlow.editing_profile_phone)
+        await callback.message.answer(
+            "Send your corrected Ethiopian phone number "
+            "(09XXXXXXXX, +2519XXXXXXXX, or 2519XXXXXXXX)."
+        )
+    else:
+        await callback.answer("This edit option is not available.", show_alert=True)
+        return
+    await callback.answer()
+
+
+@router.message(CustomerFlow.editing_profile_name, F.text)
+async def collect_profile_name(message: Message, state: FSMContext):
+    full_name = " ".join(message.text.split())
+    if not full_name or len(full_name) > 255:
+        await message.answer("Please send a name between 1 and 255 characters.")
+        return
+    db = SessionLocal()
+    try:
+        customer = db.scalar(
+            select(Customer).where(Customer.telegram_id == message.from_user.id)
+        )
+        if customer is None:
+            await state.clear()
+            await message.answer("Please send /start before editing your details.")
+            return
+        customer.full_name = full_name
+        customer.last_activity_at = datetime.now(timezone.utc)
+        db.add(
+            ActivityLog(
+                customer_id=customer.id,
+                activity_type="CUSTOMER_DETAILS_UPDATED",
+                description="Customer corrected their name",
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+    await state.clear()
+    await message.answer(f"Your name has been updated to {full_name}.", reply_markup=main_menu())
+
+
+@router.message(CustomerFlow.editing_profile_phone, F.text)
+async def collect_profile_phone(message: Message, state: FSMContext):
+    try:
+        phone_number = normalize_phone_number(message.text)
+    except ReservationError as exc:
+        await message.answer(exc.message)
+        return
+
+    db = SessionLocal()
+    try:
+        customer = db.scalar(
+            select(Customer).where(Customer.telegram_id == message.from_user.id)
+        )
+        if customer is None:
+            await state.clear()
+            await message.answer("Please send /start before editing your details.")
+            return
+        customer.phone_number = phone_number
+        customer.last_activity_at = datetime.now(timezone.utc)
+        db.add(
+            ActivityLog(
+                customer_id=customer.id,
+                activity_type="CUSTOMER_DETAILS_UPDATED",
+                description="Customer corrected their phone number",
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+    await state.clear()
+    await message.answer(
+        f"Your phone number has been updated to {phone_number}.",
+        reply_markup=main_menu(),
+    )
+
+
+@router.callback_query(F.data.startswith("replace_screenshot:"))
+async def start_screenshot_replacement(callback: CallbackQuery, state: FSMContext):
+    reservation_id = int(callback.data.split(":", 1)[1])
+    db = SessionLocal()
+    try:
+        customer = db.scalar(
+            select(Customer).where(Customer.telegram_id == callback.from_user.id)
+        )
+        reservation = (
+            db.scalar(
+                select(Reservation).where(
+                    Reservation.id == reservation_id,
+                    Reservation.customer_id == customer.id,
+                    Reservation.status.in_(("AWAITING_PAYMENT", "PAYMENT_SUBMITTED")),
+                )
+            )
+            if customer
+            else None
+        )
+        if reservation is None:
+            await callback.answer(
+                "This reservation can no longer accept a payment screenshot.",
+                show_alert=True,
+            )
+            return
+        numbers = db.scalars(
+            select(Ticket.number)
+            .join(ReservationItem, ReservationItem.ticket_id == Ticket.id)
+            .where(ReservationItem.reservation_id == reservation.id)
+            .order_by(Ticket.number)
+        ).all()
+    finally:
+        db.close()
+    await state.clear()
+    await state.update_data(payment_reservation_id=reservation_id)
+    await state.set_state(CustomerFlow.replacing_payment_screenshot)
+    await callback.message.answer(
+        f"Send the corrected payment screenshot for numbers {', '.join(numbers)} "
+        "as a photo or JPEG, PNG, or WebP image document."
+    )
+    await callback.answer()
 
 
 @router.message(F.text == "My Purchased Numbers")
@@ -436,20 +607,22 @@ async def submit_telegram_screenshot(
     file_id: str,
     original_filename: str,
     content_type: str,
+    reservation_id: int | None = None,
 ) -> str:
     db = SessionLocal()
     try:
         customer = db.scalar(select(Customer).where(Customer.telegram_id == message.from_user.id))
         if customer is None:
             return "Send /start before uploading a payment screenshot."
-        reservation = db.scalar(
-            select(Reservation)
-            .where(
-                Reservation.customer_id == customer.id,
-                Reservation.status.in_(("AWAITING_PAYMENT", "PAYMENT_SUBMITTED")),
-            )
-            .order_by(Reservation.created_at.desc())
+        reservation_query = select(Reservation).where(
+            Reservation.customer_id == customer.id,
+            Reservation.status.in_(("AWAITING_PAYMENT", "PAYMENT_SUBMITTED")),
         )
+        if reservation_id is not None:
+            reservation_query = reservation_query.where(Reservation.id == reservation_id)
+        else:
+            reservation_query = reservation_query.order_by(Reservation.created_at.desc())
+        reservation = db.scalar(reservation_query)
         if reservation is None:
             return "No active reservation was found for your account."
 
@@ -465,6 +638,7 @@ async def submit_telegram_screenshot(
                 content_type=content_type,
                 original_filename=original_filename,
                 attachment_root=settings.attachment_root,
+                replace_existing=reservation_id is not None,
             )
         except PaymentSubmissionError as exc:
             return exc.message
@@ -474,37 +648,63 @@ async def submit_telegram_screenshot(
             .where(ReservationItem.reservation_id == reservation.id)
             .order_by(Ticket.number)
         ).all()
-        return f"Payment screenshot received for {', '.join(numbers)}. It is awaiting administrator approval."
+        action = "replaced" if reservation_id is not None else "received"
+        return f"Payment screenshot {action} for {', '.join(numbers)}. It is awaiting administrator approval."
     finally:
         db.close()
 
 
 @router.message(F.photo)
-async def submit_photo(message: Message):
+async def submit_photo(message: Message, state: FSMContext):
     photo = message.photo[-1]
+    data = await state.get_data()
+    reservation_id = (
+        data.get("payment_reservation_id")
+        if await state.get_state() == CustomerFlow.replacing_payment_screenshot.state
+        else None
+    )
     response = await submit_telegram_screenshot(
         message,
         photo.file_id,
         f"telegram-photo-{photo.file_unique_id}.jpg",
         "image/jpeg",
+        reservation_id=reservation_id,
     )
+    if reservation_id is not None and response.startswith("Payment screenshot replaced"):
+        await state.clear()
     await message.answer(response)
 
 
 @router.message(F.document)
-async def submit_document(message: Message):
+async def submit_document(message: Message, state: FSMContext):
     document = message.document
     content_type = document.mime_type or "application/octet-stream"
     if content_type not in {"image/jpeg", "image/png", "image/webp"}:
         await message.answer("Please send the payment screenshot as a JPEG, PNG, or WebP image.")
         return
+    data = await state.get_data()
+    reservation_id = (
+        data.get("payment_reservation_id")
+        if await state.get_state() == CustomerFlow.replacing_payment_screenshot.state
+        else None
+    )
     response = await submit_telegram_screenshot(
         message,
         document.file_id,
         document.file_name or f"telegram-document-{document.file_unique_id}",
         content_type,
+        reservation_id=reservation_id,
     )
+    if reservation_id is not None and response.startswith("Payment screenshot replaced"):
+        await state.clear()
     await message.answer(response)
+
+
+@router.message(CustomerFlow.replacing_payment_screenshot, F.text)
+async def prompt_for_replacement_image(message: Message):
+    await message.answer(
+        "Please send the corrected screenshot as a photo or JPEG, PNG, or WebP image document."
+    )
 
 
 @router.message(F.text == "Payment Instructions")

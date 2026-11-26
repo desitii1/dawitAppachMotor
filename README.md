@@ -66,6 +66,8 @@ The Telegram customer bot interface is implemented:
 - Public masking of sold-number phone numbers
 - Reservation unavailable and allocation-limit messages
 - Persistent direct customer-to-support messaging
+- Customers can correct their name or phone number from **Edit My Details**
+- Customers can replace the payment screenshot for an active reservation from **My Reservations**
 
 Start the bot in Docker by setting `TELEGRAM_BOT_TOKEN` in `.env`, then run:
 
@@ -85,6 +87,7 @@ Private payment screenshot submission is implemented:
 - Reservation expiration validation
 - Telegram photo upload handling
 - Telegram image-document upload handling
+- Replacing a screenshot removes the previous attachment from the active payment
 
 ### Payment API
 
@@ -102,6 +105,7 @@ Secure owner authentication and the initial admin dashboard are implemented:
 - Owner account setup command
 - Live dashboard overview totals
 - Responsive Next.js login and dashboard interface
+- Number Management lets admins edit any number, correct customer details, manually sell an available number, or release a sold number back to AVAILABLE
 
 Provision or update the owner account:
 
@@ -139,6 +143,7 @@ Manual payment verification is implemented:
 Customer activity tracking and Telegram broadcasts are implemented:
 
 - Searchable, newest-first activity log API
+- Activity entries display the customer name, phone number, event details (including selected numbers), and timestamp
 - Customer and activity-type filtering support
 - Bot-start and payment audit activity records
 - Broadcast creation for all customers or selected customer IDs

@@ -81,3 +81,16 @@ class TicketPageResponse(BaseModel):
     page: int
     page_size: int
     pages: int
+
+
+class ManagedTicketResponse(TicketResponse):
+    customer_name: str | None
+    phone_number: str | None
+
+
+class ManagedTicketPageResponse(BaseModel):
+    items: list[ManagedTicketResponse]
+    total: int
+    page: int
+    page_size: int
+    pages: int

@@ -39,6 +39,7 @@ def submit_payment_screenshot(
     content_type: str,
     original_filename: str,
     attachment_root: str,
+    replace_existing: bool = False,
 ) -> tuple[Payment, PaymentAttachment]:
     if content_type not in ALLOWED_ATTACHMENT_TYPES:
         raise PaymentSubmissionError("Only JPEG, PNG, and WebP screenshots are allowed")
@@ -61,7 +62,10 @@ def submit_payment_screenshot(
         raise PaymentSubmissionError("Reservation not found", 404)
     if reservation.status not in {"AWAITING_PAYMENT", "PAYMENT_SUBMITTED"}:
         raise PaymentSubmissionError("Payment screenshots cannot be submitted for this reservation")
-    if reservation.expires_at <= datetime.now(timezone.utc):
+    expires_at = reservation.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at <= datetime.now(timezone.utc):
         raise PaymentSubmissionError("This reservation has expired")
 
     payment = db.scalar(select(Payment).where(Payment.reservation_id == reservation.id))
@@ -87,6 +91,14 @@ def submit_payment_screenshot(
         storage_key=storage_key,
         original_filename=original_filename[:255],
     )
+    old_attachments = (
+        db.scalars(
+            select(PaymentAttachment).where(PaymentAttachment.payment_id == payment.id)
+        ).all()
+        if replace_existing
+        else []
+    )
+    old_storage_keys = [old_attachment.storage_key for old_attachment in old_attachments]
     payment.status = "PAYMENT_SUBMITTED"
     payment.submitted_at = datetime.now(timezone.utc)
     reservation.status = "PAYMENT_SUBMITTED"
@@ -100,12 +112,33 @@ def submit_payment_screenshot(
     db.add(
         ActivityLog(
             customer_id=customer.id,
-            activity_type="PAYMENT_SCREENSHOT_SUBMITTED",
-            description=f"Payment screenshot submitted for numbers {', '.join(numbers)}",
+            activity_type=(
+                "PAYMENT_SCREENSHOT_REPLACED"
+                if replace_existing and old_attachments
+                else "PAYMENT_SCREENSHOT_SUBMITTED"
+            ),
+            description=(
+                f"Payment screenshot replaced for numbers {', '.join(numbers)}"
+                if replace_existing and old_attachments
+                else f"Payment screenshot submitted for numbers {', '.join(numbers)}"
+            ),
         )
     )
+    for old_attachment in old_attachments:
+        db.delete(old_attachment)
     db.add(attachment)
     db.commit()
+    for storage_key in old_storage_keys:
+        old_path = (root / storage_key).resolve()
+        if old_path.is_relative_to(root) and old_path != destination:
+            try:
+                old_path.unlink(missing_ok=True)
+            except OSError:
+                logging.getLogger(__name__).warning(
+                    "Could not remove replaced payment attachment at %s",
+                    old_path,
+                    exc_info=True,
+                )
     db.refresh(attachment)
     db.refresh(payment)
     return payment, attachment
